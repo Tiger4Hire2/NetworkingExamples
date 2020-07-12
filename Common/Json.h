@@ -6,6 +6,7 @@
 #include <span>
 #include <functional>
 #include <unordered_map>
+#include <algorithm>
 
 struct UnexpectedCharacter: public std::exception
 {
@@ -45,10 +46,12 @@ bool Test(std::istream& is, std::string_view expected)
 	return true;
 }
 
-template<typename T> concept ArrayType = std::is_array_v<T>;
+template<typename T> concept ArrayType = std::is_array_v<T> && !std::is_same_v<T, char>;
 template<ArrayType AT> std::ostream& JSON(std::ostream& os, const AT& obj);
 template<typename T> std::ostream& JSON(std::ostream& os, const T& obj);
 std::ostream& JSON(std::ostream& os, std::string_view);
+template<std::size_t N> std::ostream& JSON(std::ostream& os, const char (&)[N]);
+std::ostream& JSON(std::ostream& os, const std::string& val);
 std::ostream& JSON(std::ostream& os, bool);
 
 template<ReflectionStruct RS>
@@ -66,11 +69,18 @@ std::ostream& JSON(std::ostream& os, const RS& obj)
 	return os;
 }
 
+template<std::size_t N>
+std::ostream& JSON(std::ostream& os, const char(& c_str)[N])
+{
+	return JSON(os, std::string_view{ c_str, N });
+}
+
 template<ArrayType AT>
 std::ostream& JSON(std::ostream& os, const AT& obj)
 {
 	os << "{";
 	const auto as_span = std::span(obj);
+	static_assert(!std::is_same_v<decltype(as_span[0]), char>);
 	for (int idx = 0; idx<std::size(obj); ++idx)
 			os << (idx ? ",\n" : "\n") << JSON(os, as_span[idx]) << "\n";
 	os << "}\n";
@@ -78,6 +88,12 @@ std::ostream& JSON(std::ostream& os, const AT& obj)
 }
 
 std::ostream& JSON(std::ostream& os, std::string_view val)
+{
+	os << std::quoted(val);
+	return os;
+}
+
+std::ostream& JSON(std::ostream& os, const std::string& val)
 {
 	os << std::quoted(val);
 	return os;
@@ -99,7 +115,7 @@ std::ostream& JSON(std::ostream& os, const T& obj)
 template<typename T> std::istream& JSON(std::istream& is, T& obj);
 
 
-std::istream& JSON(std::istream& is, std::string val)
+std::istream& JSON(std::istream& is, std::string& val)
 {
 	is >> std::quoted(val);
 	return is;
@@ -108,7 +124,10 @@ std::istream& JSON(std::istream& is, std::string val)
 template<std::size_t N>
 std::istream& JSON(std::istream& is, char(&val)[N])
 {
-	is << std::quoted(val);
+	std::string temp;
+	is >> std::quoted(temp);
+	const size_t copy_sz = std::min(temp.size(), N);
+	std::copy_n(temp.begin(), copy_sz, val);
 	return is;
 }
 
@@ -179,4 +198,25 @@ std::istream& JSON(std::istream& is, T& obj)
 	static_assert(!std::is_const_v<T>);
 	is >> obj;
 	return is;
+}
+
+template<ReflectionStruct RS>
+struct AsJson
+{
+	RS& m_obj;
+	AsJson(RS& o) :m_obj(o) {}
+};
+
+template<ReflectionStruct RS>
+std::istream& operator>>(std::istream& is, const AsJson<RS>& wrapper)
+{
+	JSON(is, wrapper.m_obj);
+	return is;
+}
+
+template<ReflectionStruct RS>
+std::ostream& operator<<(std::ostream& os, const AsJson<RS>& wrapper)
+{
+	JSON(os, wrapper.m_obj);
+	return os;
 }
