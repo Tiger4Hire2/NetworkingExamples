@@ -1,9 +1,6 @@
-#include <WinSock2.h>
-#undef min
-#undef max
 #include <asio.hpp>
 #include "CommonObj.h"
-#include "Common/JSON.h"
+#include "Common/Json.h"
 
 int main()
 {
@@ -13,8 +10,9 @@ int main()
 	while (true)
 	{
 		asio::ip::tcp::iostream reply_stream{ acceptor.accept() };
-		CommonObj my_reply{ .text="Test message", .fixed_len_field="123456789", .number=1 };
-		my_reply.fixed_len_field[9] = '0';
+		time_t tm =time(NULL );
+		struct tm * curtime = localtime ( &tm );
+		CommonObj my_reply{ .text=asctime(curtime), .fixed_len_field=tm };
 		reply_stream << AsJson(my_reply);
 	}
 }

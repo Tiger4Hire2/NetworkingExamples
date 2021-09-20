@@ -1,8 +1,9 @@
 #pragma once
-#pragma once
 #include <tuple>
 #include <utility>
 #include <string_view>
+class ObjectStart{};
+class ObjectEnd{};
 
 template <class Cls, class T>
 struct Member
@@ -31,7 +32,7 @@ constexpr bool members_are_ordered()
 	return std::apply([](const auto...mbr)
 		{
 			constexpr auto nullobj = (T*)nullptr;
-			void* mbr_list[] = { (void*)&(nullobj->*mbr.member) ... };
+			std::ptrdiff_t mbr_list[] = { (std::ptrdiff_t)&(nullobj->*mbr.pointer) ... };
 			for (size_t idx = 1; idx < std::size(mbr_list); ++idx)
 				if (mbr_list[idx] <= mbr_list[idx - 1])
 					return false;
@@ -39,11 +40,10 @@ constexpr bool members_are_ordered()
 		}, mbrs);
 }
 
-
 template<typename T> concept ReflectionStruct =
 requires(T t) { t.get_members(); } &&
-	members_are_same_class<T>();
-// && members_are_ordered<T>();        Unfortunately the compiler does not like this
+	members_are_same_class<T>();// && 
+	//members_are_ordered<T>();
 
 
 template <typename T, typename Fn>
@@ -93,6 +93,25 @@ void enumerate_recursive(RS& obj, Fn&& fn)
 		(enumerate_recursive(obj.*mbr.pointer, mbr.name, std::forward<Fn>(fn)), ...);
 	};
 	std::apply(call_fn, mbrs);
+};
+
+template <ReflectionStruct RS, typename Fn>
+void enumerate_recursive(RS& obj, std::string_view name, Fn&& fn)
+{
+	const auto mbrs = RS::get_members();
+	fn(ObjectStart{}, name);
+	const auto call_fn = [&](const auto&...mbr)
+	{
+		(enumerate_recursive(obj.*mbr.pointer, mbr.name, std::forward<Fn>(fn)), ...);
+	};
+	std::apply(call_fn, mbrs);
+	fn(ObjectEnd{}, name);
+};
+
+template <typename T, typename Fn>
+void enumerate_recursive(T& ptr, std::string_view name, Fn&& fn)
+{
+	fn(ptr, name);
 };
 
 

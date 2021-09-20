@@ -1,0 +1,10 @@
+: foreach src/*.cpp |> g++ -g -O2 -I. -Wall -std=c++20 -c %f -o %o |> tobj/%B.o
+: foreach src/*.cpp |> g++ -g -O0 -I. -Wall -std=c++20 -c %f -o %o |> dobj/%B.o
+: foreach src/*.cpp |> g++ -g -O0 -I. -Wall -std=c++20 -c %f -o %o |> obj/%B.o
+: foreach TimeService/*.cpp |> g++ -g -O0 -I. -Wall -std=c++20 -c %f -o %o |> TimeService/%B.o
+: foreach TimeClient/*.cpp |> g++ -g -O0 -I. -Wall -std=c++20 -c %f -o %o |> TimeClient/%B.o
+: tobj/*.o |> g++ %f -o %o -lbenchmark_main -lbenchmark -pthread -lgtest -lpfm |> time.exe
+: dobj/*.o |> g++ %f -o %o -lbenchmark -pthread -lgtest -lgtest_main -lpfm |> test.exe
+: dobj/*.o |> g++ %f -o %o  |> run.exe
+: TimeService/*.o |> g++ %f -o %o -pthread  |> TimeService.exe
+: TimeClient/*.o |> g++ %f -o %o -pthread  |> TimeClient.exe

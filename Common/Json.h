@@ -179,7 +179,7 @@ std::istream& JSON(std::istream& is, AT& obj)
 	bool first{ true };
 	while (Test(is, "}"))
 	{
-		using Element = decltype(AT[0]);
+		using Element = decltype(obj[0]);
 		if (first)
 			Check(is, "{");
 		else

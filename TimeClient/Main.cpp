@@ -1,9 +1,6 @@
-#include <WinSock2.h>
-#undef min
-#undef max
 #include <asio.hpp>
 #include "TimeService/CommonObj.h"
-#include "Common/JSON.h"
+#include "Common/Json.h"
 
 int main()
 {
