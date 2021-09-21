@@ -3,8 +3,14 @@
 : foreach src/*.cpp |> g++ -g -O0 -I. -Wall -std=c++20 -c %f -o %o |> obj/%B.o
 : foreach TimeService/*.cpp |> g++ -g -O0 -I. -Wall -std=c++20 -c %f -o %o |> TimeService/%B.o
 : foreach TimeClient/*.cpp |> g++ -g -O0 -I. -Wall -std=c++20 -c %f -o %o |> TimeClient/%B.o
+: foreach Work/*.cpp |> g++ -g -O0 -I. -Wall -std=c++20 -c %f -o %o |> Work/%B.o
+: foreach Work/*.cpp |> g++ -g -O2 -I. -Wall -std=c++20 -c %f -o %o |> Work/Time/%B.o
+: foreach Dispatcher/*.cpp |> g++ -g -O0 -I. -Wall -std=c++20 -c %f -o %o |> Dispatcher/%B.o
 : tobj/*.o |> g++ %f -o %o -lbenchmark_main -lbenchmark -pthread -lgtest -lpfm |> time.exe
 : dobj/*.o |> g++ %f -o %o -lbenchmark -pthread -lgtest -lgtest_main -lpfm |> test.exe
 : dobj/*.o |> g++ %f -o %o  |> run.exe
 : TimeService/*.o |> g++ %f -o %o -pthread  |> TimeService.exe
 : TimeClient/*.o |> g++ %f -o %o -pthread  |> TimeClient.exe
+: Work/Time/*.o |> g++ %f -o %o -pthread -lgtest  -lbenchmark_main -lbenchmark -lpfm |> WorkTime.exe
+: Work/*.o |> g++ %f -o %o -pthread -lgtest -lgtest_main -lbenchmark -lpfm |> WorkTest.exe
+: Dispatcher/*.o |> g++ %f -o %o -pthread -lgtest -lgtest_main -lbenchmark -lpfm |> Dispatcher.exe
