@@ -6,10 +6,11 @@
 #include <assert.h>
 using MemBlock = std::span<const std::byte>;
 
-template <class System> struct SelfRegister;
-template<class Msg, class System> class Handle;
+class DefaultSystem;
+template <class System = DefaultSystem> struct SelfRegister;
+template<class Msg, class System = DefaultSystem> class Handle;
 
-template<class System>
+template<class System = DefaultSystem>
 class Dispatcher
 {
 public: //types
