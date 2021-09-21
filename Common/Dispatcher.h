@@ -6,9 +6,10 @@
 #include <assert.h>
 using MemBlock = std::span<const std::byte>;
 
-struct SelfRegister;
-template<class Msg> class Handle;
+template <class System> struct SelfRegister;
+template<class Msg, class System> class Handle;
 
+template<class System>
 class Dispatcher
 {
 public: //types
@@ -25,13 +26,13 @@ public:
     static Dispatcher& Get() {assert(p_inst); return *p_inst;} 
     // not thread-safe, does not have to be
     Dispatcher();
-    static void RegisterMessage(SelfRegister&);
-    template <class Msg> void RegisterHandler(Handle<Msg>&);
-    template <class Msg> void MoveHandler(Handle<Msg>&, Handle<Msg>&);
+    static void RegisterMessage(SelfRegister<System>&);
+    template <class Msg> void RegisterHandler(Handle<Msg, System>&);
+    template <class Msg> void MoveHandler(Handle<Msg, System>&, Handle<Msg, System>&);
 
     void Dispatch();
-    template <class Msg> void Dispatch(std::span<const std::byte>);
-    template <class Msg> void Send(std::span<const std::byte>);
+    template <class Msg> void Dispatch(const Msg&);
+    template <class Msg> void Send(const Msg&);
     std::vector<std::byte> GetMessages() {
         std::vector<std::byte> retval;
         std::swap(retval, messages);
@@ -41,51 +42,53 @@ public:
         messages = std::move(new_messages);
     }
 private:
-    static inline SelfRegister* message_list{nullptr};
+    static inline SelfRegister<System>* message_list{nullptr};
     static inline Dispatcher* p_inst{nullptr};
     std::vector<RegisteredHandler> handlers;
     std::vector<std::byte> messages;
 };
 
 // must be static
+template<class System>
 struct SelfRegister
 {
-    Dispatcher::ParseFn     fn;
+    Dispatcher<System>::ParseFn     fn;
     SelfRegister*           next{nullptr};
-    Dispatcher::MessageID   id{-1};
-    SelfRegister(Dispatcher::ParseFn f)
+    Dispatcher<System>::MessageID   id{-1};
+    SelfRegister(Dispatcher<System>::ParseFn f)
         : fn(f)
     {
-        Dispatcher::RegisterMessage(*this);
+        Dispatcher<System>::RegisterMessage(*this);
     }
 };
 
-template<class Msg>
+template<class Msg, class System>
 class Handle
 {
     static int Parse(MemBlock, void*);
-    static inline SelfRegister self_register{Parse};
+    static inline SelfRegister<System> self_register{Parse};
 public:
     virtual void HandleMsg(const Msg&) = 0;
-    static Dispatcher::MessageID GetID() noexcept { assert(self_register.id>=0); return self_register.id; }
+    static Dispatcher<System>::MessageID GetID() noexcept { assert(self_register.id>=0); return self_register.id; }
 
     Handle() {
         (void)self_register;
-        Dispatcher::Get().RegisterHandler(*this);
+        Dispatcher<System>::Get().RegisterHandler(*this);
     }
 
     // non-copyable
     Handle(const Handle&) = delete;
     Handle& operator==(const Handle&) = delete;
     // but is movable
-    Handle(Handle&& old) {Dispatcher::Get().MoveHandler(self_register.id, *this, old);}
-    Handle& operator==(Handle&& old) { Dispatcher::Get().MoveHandler(self_register.id, *this, old); return *this; }
+    Handle(Handle&& old) {Dispatcher<System>::Get().MoveHandler(self_register.id, *this, old);}
+    Handle& operator==(Handle&& old) { Dispatcher<System>::Get().MoveHandler(self_register.id, *this, old); return *this; }
 
-    void Send(const Msg& msg) {Dispatcher::Get().Send<Msg>(std::as_bytes(std::span(&msg,1))); }
-    void Dispatch(const Msg& msg) {Dispatcher::Get().Dispatch<Msg>(std::as_bytes(std::span(&msg,1))); }
+    void Send(const Msg& msg);
+    void Dispatch(const Msg& msg);
 };
 
-Dispatcher::Dispatcher() 
+template<class System>
+Dispatcher<System>::Dispatcher() 
 {
     assert(!p_inst); 
     p_inst=this;
@@ -101,18 +104,21 @@ Dispatcher::Dispatcher()
     message_list = nullptr;
 }
 
-void Dispatcher::RegisterMessage(SelfRegister& details)
+template<class System>
+void Dispatcher<System>::RegisterMessage(SelfRegister<System>& details)
 {
     assert(!p_inst);
     details.next = message_list;
     message_list = &details;
 }
 
+template<class System>
 template <class Msg>
-void Dispatcher::Send(std::span<const std::byte> bytes)
+void Dispatcher<System>::Send(const Msg& msg)
 {
     assert(p_inst);
-    MessageID id{Handle<Msg>::GetID()};
+    MessageID id{Handle<Msg,System>::GetID()};
+    const auto bytes = std::as_bytes(std::span(&msg,1));
     const auto size_of_new = sizeof(id)+bytes.size();
     messages.resize(messages.size()+size_of_new);
     const auto tgt = std::as_writable_bytes(std::span(messages)).last(size_of_new);
@@ -123,18 +129,21 @@ void Dispatcher::Send(std::span<const std::byte> bytes)
     std::copy(bytes.begin(), bytes.end(), tgt2.begin());
 }
 
+template<class System>
 template <class Msg>
-void Dispatcher::Dispatch(std::span<const std::byte> bytes)
+void Dispatcher<System>::Dispatch(const Msg& msg)
 {
     assert(p_inst);
-    MessageID id{Handle<Msg>::GetID()};
+    MessageID id{Handle<Msg, System>::GetID()};
+    const auto bytes = std::as_bytes(std::span(&msg,1));
     assert((int)handlers.size()>id);
     if (handlers[id].handler)
         handlers[id].parse_fn(bytes, handlers[id].handler);
 //  else???? Maybe throw, maybe ignore, it really depends on the use case
 }
 
-void Dispatcher::Dispatch()
+template<class System>
+void Dispatcher<System>::Dispatch()
 {
     assert(p_inst);
 
@@ -153,29 +162,31 @@ void Dispatcher::Dispatch()
     messages.clear();
 }
 
+template<class System>
 template<class Msg>
-void Dispatcher::RegisterHandler(Handle<Msg>& new_handler)
+void Dispatcher<System>::RegisterHandler(Handle<Msg, System>& new_handler)
 {
     assert(p_inst);
-    const MessageID id{Handle<Msg>::GetID()};
+    const MessageID id{Handle<Msg, System>::GetID()};
     assert((int)handlers.size()>id);
     assert(!handlers[id].handler);
     handlers[id].handler = &new_handler;
 }
 
+template<class System>
 template<class Msg>
-void Dispatcher::MoveHandler(Handle<Msg>& old_handler, Handle<Msg>& new_handler)
+void Dispatcher<System>::MoveHandler(Handle<Msg, System>& old_handler, Handle<Msg, System>& new_handler)
 {
     assert(p_inst);
-    const MessageID id{Handle<Msg>::GetID()};
+    const MessageID id{Handle<Msg, System>::GetID()};
     assert((int)handlers.size()>id);
     assert(handlers[id].handler == &old_handler);
     handlers[id].handler = &new_handler;
 }
 
 // we need to copy to respect the alligment rules
-template<class Msg>
-int Handle<Msg>::Parse(MemBlock mem, void* inst)
+template<class Msg, class System>
+int Handle<Msg, System>::Parse(MemBlock mem, void* inst)
 {
     assert(mem.size()>=sizeof(Msg));
     Msg copy;
@@ -183,8 +194,21 @@ int Handle<Msg>::Parse(MemBlock mem, void* inst)
     std::copy_n(mem.begin(), tgt.size(), tgt.begin() );
     if (inst)
     {
-        Handle* concrete_inst = reinterpret_cast<Handle<Msg>*>(inst);   
+        Handle* concrete_inst = reinterpret_cast<Handle<Msg, System>*>(inst);   
         concrete_inst->HandleMsg(copy);
     }
     return tgt.size();
+}
+
+template<class Msg, class System>
+void Handle<Msg, System>::Send(const Msg& msg) 
+{
+    auto& dispatcher = Dispatcher<System>::Get();
+    dispatcher.Send(msg);
+}
+template<class Msg, class System>
+void Handle<Msg, System>::Dispatch(const Msg& msg)
+{
+    auto& dispatcher = Dispatcher<System>::Get();
+    dispatcher.Dispatcher(std::as_bytes(std::span(&msg,1)));
 }

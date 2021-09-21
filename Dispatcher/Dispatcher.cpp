@@ -1,38 +1,42 @@
 #include "Common/Dispatcher.h"
 #include <iostream>
 
-struct MsgA
+struct GlobalSystem
 {
-    int a;
-};
+    Dispatcher<GlobalSystem> dispatcher;
+    struct MsgA
+    {
+        int a;
+    };
 
-struct MsgB
-{
-    int a,b;
+    struct MsgB
+    {
+        int a,b;
+    };
 };
 
 class Thing
-    : Handle<MsgA>
-    , Handle<MsgB>
+    : Handle<GlobalSystem::MsgA, GlobalSystem>
+    , Handle<GlobalSystem::MsgB, GlobalSystem>
 {
-    using Handle<MsgA>::Send;
-    using Handle<MsgB>::Send;
-    void HandleMsg(const MsgA& msg) override {std::cout << "A:" << msg.a << "\n";}
-    void HandleMsg(const MsgB& msg) override {std::cout << "B:" << msg.a << "," << msg.b <<"\n";}
+    using Handle<GlobalSystem::MsgA, GlobalSystem>::Send;
+    using Handle<GlobalSystem::MsgB, GlobalSystem>::Send;
+    void HandleMsg(const GlobalSystem::MsgA& msg) override {std::cout << "A:" << msg.a << "\n";}
+    void HandleMsg(const GlobalSystem::MsgB& msg) override {std::cout << "B:" << msg.a << "," << msg.b <<"\n";}
 public:
     void Action()
     {
-        Send(MsgA{1});
-        Send(MsgA{1001});
-        Send(MsgB{1,2});
-        Send(MsgB{3,4});
+        Send(GlobalSystem::MsgA{1});
+        Send(GlobalSystem::MsgA{1001});
+        Send(GlobalSystem::MsgB{1,2});
+        Send(GlobalSystem::MsgB{3,4});
     }
 };
 
 int main()
 {
-    Dispatcher dispatcher;    
+    GlobalSystem system;
     Thing thing;
     thing.Action();
-    dispatcher.Dispatch();
+    system.dispatcher.Dispatch();
 }
