@@ -1,65 +1,91 @@
 #include "Common/Dispatcher.h"
+#include "Common/Dispatcher_impl.h"
+#include "Common/Reflection.h"
+#include "Common/Json.h"
 #include <iostream>
+#include "GlobalSystem.h"
+#include "GlobalObject.h"
 
-struct GlobalSystem
+namespace Geometry
 {
-    Dispatcher<GlobalSystem> dispatcher;
-    template <class Msg> using Handle = Handle<Msg, GlobalSystem>;
-    struct MsgA
-    {
-        int a;
-    };
+    struct Point;
+    struct Line;
+}
 
-    struct MsgB
-    {
-        int a,b;
-    };
-};
-
-struct MsgC
+class MyContainer
+    : HANDLE(Geometry::Point)
+    , HANDLE(Geometry::Line)
 {
-    int a,b;
-};
-
-class Thing
-    : GlobalSystem::Handle<GlobalSystem::MsgA>
-    , GlobalSystem::Handle<GlobalSystem::MsgB>
-{
-    using GlobalSystem::Handle<GlobalSystem::MsgA>::Send;
-    using GlobalSystem::Handle<GlobalSystem::MsgB>::Send;
-    void HandleMsg(const GlobalSystem::MsgA& msg) override {std::cout << "A:" << msg.a << "\n";}
-    void HandleMsg(const GlobalSystem::MsgB& msg) override {std::cout << "B:" << msg.a << "," << msg.b <<"\n";}
+    using HANDLE(Geometry::Point)::Send;
+    using HANDLE(Geometry::Line)::Send;
+    using HANDLE(Geometry::Point)::Dispatch;
+    using HANDLE(Geometry::Line)::Dispatch;
+    void HandleMsg(const Geometry::Point& msg) override;
+    void HandleMsg(const Geometry::Line& msg) override;
 public:
-    void Action()
-    {
-        Send(GlobalSystem::MsgA{1});
-        Send(GlobalSystem::MsgA{1001});
-        Send(GlobalSystem::MsgB{1,2});
-        Send(GlobalSystem::MsgB{3,4});
-    }
+    void Action();
 };
 
-class Thing2
-    : Handle<MsgC>
+
+namespace Geometry
 {
-    using Handle<MsgC>::Send;
-    void HandleMsg(const MsgC& msg) override {std::cout << "C:" << msg.a << "," << msg.b <<"\n";}
-public:
-    void Action()
-    {
-        Send(MsgC{1,2});
-        Send(MsgC{3,4});
-    }
+struct Point
+{
+	int x, y;
+
+	static constexpr auto get_members()
+	{
+		return std::make_tuple(
+			Member("x", &Point::x),
+			Member("y", &Point::y)
+		);
+	}
 };
+
+struct Line
+{
+	Point from, to;
+
+	static constexpr auto get_members()
+	{
+		return std::make_tuple(
+			Member("from", &Line::from),
+			Member("to", &Line::to)
+		);
+	}
+};
+}
+
+
+void MyContainer::HandleMsg(const Geometry::Point& msg)
+{
+    JSON(std::cout, msg);
+}
+void MyContainer::HandleMsg(const Geometry::Line& msg) 
+{ 
+    JSON(std::cout, msg); 
+}
+
+void MyContainer::Action()
+{
+    Dispatch(Geometry::Line{32,16});
+    Send(Geometry::Point{1,2});
+    Send(Geometry::Line{Geometry::Point{3,4}, Geometry::Point{5,6}});
+}
+
 
 int main()
 {
     Dispatcher standalone;
     GlobalSystem system;
     Thing thing;
-    Thing2 thing2;
+
+    MyContainer thing2;
     thing.Action();
-    thing2.Action();
+    std::cout << "Dispatch global system\n";
     system.dispatcher.Dispatch();
+
+    std::cout << "Default system\n";
+    thing2.Action();
     standalone.Dispatch();
 }
