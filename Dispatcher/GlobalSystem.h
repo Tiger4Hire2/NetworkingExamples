@@ -5,13 +5,13 @@ struct GlobalSystem
 {
     struct MsgA
     {
-        constexpr const char Name[] = "MsgA";
+        static constexpr const char Name[] = "MsgA";
         int a;
     };
 
     struct MsgB
     {
-        constexpr const char Name[] = "MsgB";
+        static constexpr const char Name[] = "MsgB";
         int a,b;
     };
 

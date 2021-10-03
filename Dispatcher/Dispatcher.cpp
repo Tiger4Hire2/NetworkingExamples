@@ -8,29 +8,9 @@
 
 namespace Geometry
 {
-    struct Point;
-    struct Line;
-}
-
-class MyContainer
-    : HANDLE(Geometry::Point)
-    , HANDLE(Geometry::Line)
-{
-    using HANDLE(Geometry::Point)::Send;
-    using HANDLE(Geometry::Line)::Send;
-    using HANDLE(Geometry::Point)::Dispatch;
-    using HANDLE(Geometry::Line)::Dispatch;
-    void HandleMsg(const Geometry::Point& msg) override;
-    void HandleMsg(const Geometry::Line& msg) override;
-public:
-    void Action();
-};
-
-
-namespace Geometry
-{
 struct Point
 {
+    static constexpr const char Name[] = "Point";
 	int x, y;
 
 	static constexpr auto get_members()
@@ -46,6 +26,7 @@ struct Line
 {
 	Point from, to;
 
+    static constexpr const char Name[] = "Line";
 	static constexpr auto get_members()
 	{
 		return std::make_tuple(
@@ -55,6 +36,22 @@ struct Line
 	}
 };
 }
+
+class MyContainer
+    : Handle<Geometry::Point>
+    , Handle<Geometry::Line>
+{
+    using Handle<Geometry::Point>::Send;
+    using Handle<Geometry::Line>::Send;
+    using Handle<Geometry::Point>::Dispatch;
+    using Handle<Geometry::Line>::Dispatch;
+    void HandleMsg(const Geometry::Point& msg) override;
+    void HandleMsg(const Geometry::Line& msg) override;
+public:
+    void Action();
+};
+
+
 
 
 void MyContainer::HandleMsg(const Geometry::Point& msg)
@@ -77,7 +74,11 @@ void MyContainer::Action()
 int main()
 {
     Dispatcher standalone;
+    for (const auto& s : standalone.GetRegisteredTypes())
+        std::cout << s << "\n";
     GlobalSystem system;
+    for (const auto& s : system.dispatcher.GetRegisteredTypes())
+        std::cout << s << "\n";
     Thing thing;
 
     MyContainer thing2;

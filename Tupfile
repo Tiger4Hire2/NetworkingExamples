@@ -6,6 +6,10 @@
 : foreach Work/*.cpp |> g++ -g -O0 -I. -Wall -std=c++20 -c %f -o %o |> Work/%B.o
 : foreach Work/*.cpp |> g++ -g -O2 -I. -Wall -std=c++20 -c %f -o %o |> Work/Time/%B.o
 : foreach Dispatcher/*.cpp |> g++ -g -O0 -I. -Wall -std=c++20 -c %f -o %o |> Dispatcher/%B.o
+: foreach App/*.cpp |> g++ -g -O0 -I. -Iimgui -Wall -std=c++20 -c %f -o %o |> App/obj/%B.o
+: imgui/backends/imgui_impl_opengl3.cpp |> g++ -g -O0 -I. -Iimgui -Wall -std=c++20 -c %f -o %o |> App/obj/%B.o
+: imgui/backends/imgui_impl_sdl.cpp |> g++ -g -O0 -Iimgui -Wall -std=c++20 -c %f -o %o |> App/obj/%B.o
+: foreach imgui/*.cpp |> g++ -g -O0 -I. -Iimgui -Wall -std=c++20 -c %f -o %o |> App/obj/%B.o
 : tobj/*.o |> g++ %f -o %o -lbenchmark_main -lbenchmark -pthread -lgtest -lpfm |> time.exe
 : dobj/*.o |> g++ %f -o %o -lbenchmark -pthread -lgtest -lgtest_main -lpfm |> test.exe
 : dobj/*.o |> g++ %f -o %o  |> run.exe
@@ -14,3 +18,4 @@
 : Work/Time/*.o |> g++ %f -o %o -pthread -lgtest  -lbenchmark_main -lbenchmark -lpfm |> WorkTime.exe
 : Work/*.o |> g++ %f -o %o -pthread -lgtest -lgtest_main -lbenchmark -lpfm |> WorkTest.exe
 : Dispatcher/*.o |> g++ %f -o %o -pthread -lgtest -lgtest_main -lbenchmark -lpfm |> Dispatcher.exe
+: App/obj/*.o |> g++ %f -o %o -pthread -lSDL2 -lGL -ldl |> App.exe

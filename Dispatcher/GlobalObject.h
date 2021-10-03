@@ -2,11 +2,11 @@
 
 // some object that is an actor in a global system
 class Thing
-    : SCOPE_HANDLE(GlobalSystem,MsgA)
-    , SCOPE_HANDLE(GlobalSystem,MsgB)
+    : Handle<GlobalSystem::MsgA, GlobalSystem>
+    , Handle<GlobalSystem::MsgB, GlobalSystem>
 {
-    using SCOPE_HANDLE(GlobalSystem,MsgA)::Send;
-    using SCOPE_HANDLE(GlobalSystem,MsgB)::Send;
+    using Handle<GlobalSystem::MsgA, GlobalSystem>::Send;
+    using Handle<GlobalSystem::MsgB, GlobalSystem>::Send;
     void HandleMsg(const GlobalSystem::MsgA& msg) override;
     void HandleMsg(const GlobalSystem::MsgB& msg) override;
 public:
