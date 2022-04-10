@@ -43,6 +43,7 @@ int main()
 	Line l{ {0x12345678, 0x12345678}, {0x12345678, 0x12345678} };
 	visit_recursive(l, [](auto& v) {ReverseEndian(v); });
 
+	std::cout << std::hex;
 	JSON(std::cout, l);
 	std::cout << std::endl;
 

@@ -8,7 +8,7 @@
             "name": "(gdb) Launch",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/Dispatcher.exe",
+            "program": "${workspaceFolder}/Protobuf_test.exe",
             "args": [],
             "stopAtEntry": false,
             "cwd": "${fileDirname}",

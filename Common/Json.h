@@ -1,5 +1,6 @@
 #pragma once
 #include "Reflection.h"
+#include "traits.h"
 #include <iostream>
 #include <iomanip>
 #include <string_view>
@@ -7,7 +8,6 @@
 #include <functional>
 #include <unordered_map>
 #include <algorithm>
-
 struct UnexpectedCharacter: public std::exception
 {
 
@@ -46,8 +46,10 @@ bool Test(std::istream& is, std::string_view expected)
 	return true;
 }
 
-template<typename T> concept ArrayType = std::is_array_v<T> && !std::is_same_v<T, char>;
+template<typename T> concept ArrayType = (std::is_array_v<T> && !std::is_same_v<T, char>) || is_vector_v<T>();
+template<typename T> concept NamedEnumType = std::is_enum_v<T> && requires(T t) { to_string(t); };
 template<ArrayType AT> std::ostream& JSON(std::ostream& os, const AT& obj);
+template<NamedEnumType NE> std::ostream& JSON(std::ostream& os, const NE& obj);
 template<typename T> std::ostream& JSON(std::ostream& os, const T& obj);
 std::ostream& JSON(std::ostream& os, std::string_view);
 template<std::size_t N> std::ostream& JSON(std::ostream& os, const char (&)[N]);
@@ -62,7 +64,7 @@ std::ostream& JSON(std::ostream& os, const RS& obj)
 		{
 			os << (first ? "{\n" : ",\n");
 			first = false;
-			os << std::quoted(name) << " = ";
+			os << std::quoted(name) << " : ";
 			JSON(os, mbr);
 		});
 	os << "}\n";
@@ -78,12 +80,21 @@ std::ostream& JSON(std::ostream& os, const char(& c_str)[N])
 template<ArrayType AT>
 std::ostream& JSON(std::ostream& os, const AT& obj)
 {
-	os << "{";
+	os << "[";
 	const auto as_span = std::span(obj);
 	static_assert(!std::is_same_v<decltype(as_span[0]), char>);
-	for (int idx = 0; idx<std::size(obj); ++idx)
-			os << (idx ? ",\n" : "\n") << JSON(os, as_span[idx]) << "\n";
-	os << "}\n";
+	for (size_t idx = 0; idx<std::size(obj); ++idx)
+	{
+		os << (idx ? ",\n" : "\n");
+		JSON(os, as_span[idx]) << "\n";
+	}
+	os << "]\n";
+	return os;
+}
+
+template<NamedEnumType NE> std::ostream& JSON(std::ostream& os, const NE& obj)
+{
+	os << "\"" << to_string(obj) << "\"";
 	return os;
 }
 
@@ -161,7 +172,7 @@ std::istream& JSON(std::istream& is, RS& obj)
 		std::string name;
 		if (is >> std::quoted(name))
 		{
-			Check(is, "=");
+			Check(is, ":");
 			const auto found = members.find(name);
 			if (found == members.end())
 				throw UnknownMemberName{};
