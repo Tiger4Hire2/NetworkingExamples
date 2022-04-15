@@ -10,7 +10,7 @@ namespace testing {
         }
         std::ostream& operator<<(std::ostream& os, const std::byte val)
         {
-            os << (int)val;
+            os << (int)val; 
             return os;
         }
         std::ostream& operator<<(std::ostream& os, ConstDataBlock val)
@@ -39,7 +39,7 @@ TEST(ProtoBuf, BytePush)
     EXPECT_EQ(ConstDataBlock{test_bytes}, as_const(tgt));
 }
 
-TEST(ProtoBuf, VarInt)
+TEST(ProtoBuf, VarInt32)
 {
     std::byte test_0_bytes[] = {std::byte{0x00}};
     std::byte test_1_bytes[] = {std::byte{0x01}};
@@ -57,22 +57,222 @@ TEST(ProtoBuf, VarInt)
     }
 }
 
-TEST(ProtoBuf, SignedVarInt)
+template<class Pairs, class Fn>
+void TestVarIntFn( const Pairs test_pairs, const Fn&& fn)
+{
+    for (const auto& pair : test_pairs)
+    {
+        using namespace testing::internal;
+        DataBlock tgt;
+        fn(tgt, pair.second);
+        EXPECT_EQ(ConstDataBlock{pair.first}, as_const(tgt)) << "encoding:" << std::dec << pair.second << "(" << std::hex << pair.second << ")";
+    }
+}
+
+TEST(ProtoBuf, SignedVarInt32)
 {
     std::byte test_0_bytes[] = {std::byte{0x00}};
     std::byte test_neg1_bytes[] = {std::byte{0x01}};
     std::byte test_1_bytes[] = {std::byte{0x02}};
     std::byte test_negmax_bytes[] = {std::byte{0xFF}, std::byte{0xFF} , std::byte{0xFF}, std::byte{0xFF}, std::byte{0x0F}};
     std::byte test_max_bytes[] = {std::byte{0xFE}, std::byte{0xFF} , std::byte{0xFF}, std::byte{0xFF},  std::byte{0x0F}};
+    std::byte test_150_bytes[] = {std::byte{0xAC}, std::byte{0x02} };
     std::vector<std::pair<ConstDataBlock, int>> test_pairs = { {test_0_bytes, 0}, {test_neg1_bytes, -1}, {test_1_bytes, 1},
-                                     {test_negmax_bytes, -2147483648}, {test_max_bytes, 2147483647} };
-    for (const auto& pair : test_pairs)
-    {
-        using namespace testing::internal;
-        DataBlock tgt;
-        WriteAsSignedVarint32(tgt, pair.second);
-        std::cout << as_const(tgt)<<"\n";
+                                     {test_negmax_bytes, -2147483648}, {test_max_bytes, 2147483647}, {test_150_bytes, 150 }};
 
-        EXPECT_EQ(ConstDataBlock{pair.first}, as_const(tgt)) << "encoding:" << std::dec << pair.second << "(" << std::hex << pair.second << ")";
-    }
+    TestVarIntFn(test_pairs, [](auto& tgt, const auto val){ return WriteAsSignedVarint32(tgt, val);});
 }
+
+TEST(ProtoBuf, SignedVarInt64)
+{
+    // 32-bit should be the same
+    std::byte test_0_bytes[] = {std::byte{0x00}};
+    std::byte test_neg1_bytes[] = {std::byte{0x01}};
+    std::byte test_1_bytes[] = {std::byte{0x02}};
+    std::byte test_negmax_bytes[] = {std::byte{0xFF}, std::byte{0xFF} , std::byte{0xFF}, std::byte{0xFF}, std::byte{0x0F}};
+    std::byte test_max_bytes[] = {std::byte{0xFE}, std::byte{0xFF} , std::byte{0xFF}, std::byte{0xFF},  std::byte{0x0F}};
+    std::byte test_150_bytes[] = {std::byte{0xAC}, std::byte{0x02} };
+    std::vector<std::pair<ConstDataBlock, int64_t>> test_pairs = { 
+                                    {test_0_bytes, 0}, {test_neg1_bytes, -1}, {test_1_bytes, 1},
+                                     {test_negmax_bytes, -2147483648}
+                                     , {test_max_bytes, 2147483647}, {test_150_bytes, 150 }
+        };
+
+    TestVarIntFn(test_pairs, [](auto& tgt, const auto val){ return WriteAsSignedVarint64(tgt, val);});
+
+    std::byte test_negbig_bytes[] = {std::byte{0xFD}, std::byte{0xFF}, std::byte{0xFF}, std::byte{0xFF}, std::byte{0xFF},
+                                     std::byte{0xFF}, std::byte{0xFF}, std::byte{0xFF}, std::byte{0x1F} };
+
+    std::vector<std::pair<ConstDataBlock, int64_t>> test64_pairs = { 
+        {test_negbig_bytes, -0xFFFFFFFFFFFFFFF} 
+    }; 
+    TestVarIntFn(test64_pairs, [](auto& tgt, const auto val){ return WriteAsSignedVarint64(tgt, val);});
+}
+
+TEST(ProtoBuf, HelloWorld)
+{
+    struct HelloRequest {
+    std::string name;
+    int32_t var32;
+    int64_t var64;
+    SignedInt<int32_t> s32;
+    SignedInt<int64_t> s64;
+    static constexpr auto get_members() {
+        return std::make_tuple(
+                PROTODECL(HelloRequest, 1, name),
+                PROTODECL(HelloRequest, 2, var32),
+                PROTODECL(HelloRequest, 3, var64),
+                PROTODECL(HelloRequest, 4, s32),
+                PROTODECL(HelloRequest, 5, s64)
+        );
+        }
+    };
+    HelloRequest test{.name="world", .var32=150, .var64=150, .s32=150, .s64=-0xFFFFFFFFFFFFFFF};
+    DataBlock tgt;
+    tgt << test;
+    std::byte wireshark_snoop[] = {
+        std::byte{0x0a},
+        std::byte{0x05},
+        std::byte{0x77},
+        std::byte{0x6f},
+        std::byte{0x72},
+        std::byte{0x6c},
+        std::byte{0x64},
+        std::byte{0x10},
+        std::byte{0x96},
+        std::byte{0x01},
+        std::byte{0x18},
+        std::byte{0x96},
+        std::byte{0x01},
+        std::byte{0x20},
+        std::byte{0xac},
+        std::byte{0x02},
+        std::byte{0x28},
+        std::byte{0xfd},
+        std::byte{0xff},
+        std::byte{0xff},
+        std::byte{0xff},
+        std::byte{0xff},
+        std::byte{0xff},
+        std::byte{0xff},
+        std::byte{0xff},
+        std::byte{0x1f},
+    };
+    EXPECT_EQ(wireshark_snoop, tgt);
+}
+
+TEST(ProtoBuf, Compound)
+{
+    struct SirName {
+    std::string name;
+    static constexpr auto get_members() {
+        return std::make_tuple(
+                PROTODECL(SirName, 1, name)
+        );
+        }
+    };
+    struct HelloRequest {
+    std::string name;
+    SirName     sirname;
+    static constexpr auto get_members() {
+        return std::make_tuple(
+                PROTODECL(HelloRequest, 1, name),
+                PROTODECL(HelloRequest, 2, sirname)
+        );
+        }
+    };
+    HelloRequest test{.name="Mike", .sirname={"Crotch"}};
+    DataBlock tgt;
+    tgt << test;
+    char wireshark_snoop[] = "\x0a\x04\x4d\x69\x6b\x65\x12\x08\x0a\x06\x43\x72\x6f\x74\x63\x68";
+    EXPECT_EQ(std::size(wireshark_snoop)-1, std::size(tgt));
+    const auto as_span = std::span{wireshark_snoop}; 
+    const auto drop_terminator = as_span.first(as_span.size()-1);
+    EXPECT_EQ(std::as_bytes(drop_terminator), tgt);
+}
+
+TEST(ProtoBuf, Repeated)
+{
+    struct SirName {
+        std::string name;
+        static constexpr auto get_members() {
+            return std::make_tuple(
+                    PROTODECL(SirName, 1, name)
+            );
+            }
+    };
+    struct HelloRequest {
+        std::string name;
+        std::vector<SirName>     sirname;
+        static constexpr auto get_members() {
+            return std::make_tuple(
+                    PROTODECL(HelloRequest, 1, name),
+                    PROTODECL(HelloRequest, 2, sirname)
+            );
+            }
+    };
+    static_assert(is_proto_struct_v<SirName>);
+
+    HelloRequest test{.name="Mike", .sirname={{{"bloaty"}, {"mcbloatface"}}}};
+    DataBlock tgt;
+    tgt << test;
+    char wireshark_snoop[] =    "\x0a\x04\x4d\x69\x6b\x65\x12\x08\x0a\x06\x62\x6c\x6f\x61\x74\x79" \
+                                "\x12\x0d\x0a\x0b\x6d\x63\x62\x6c\x6f\x61\x74\x66\x61\x63\x65";
+    EXPECT_EQ(std::size(wireshark_snoop)-1, std::size(tgt));
+    const auto as_span = std::span{wireshark_snoop}; 
+    const auto drop_terminator = as_span.first(as_span.size()-1);
+    EXPECT_EQ(std::as_bytes(drop_terminator), tgt);
+}
+
+TEST(ProtoBuf, RepeatedEmbeded)
+{
+    struct Nickname
+    {
+        std::string name;
+        static constexpr auto get_members() {
+            return std::make_tuple(
+                    PROTODECL(Nickname, 1, name)
+            );
+        }
+    };
+    struct SirName {
+        std::string name;
+        std::vector<Nickname> moniker;
+        static constexpr auto get_members() {
+            return std::make_tuple(
+                    PROTODECL(SirName, 1, name),
+                    PROTODECL(SirName, 2, moniker)
+            );
+        }
+    };
+    struct HelloRequest {
+        std::vector<std::string> name;
+        std::vector<SirName>     sirname;
+        static constexpr auto get_members() {
+            return std::make_tuple(
+                    PROTODECL(HelloRequest, 1, name),
+                    PROTODECL(HelloRequest, 2, sirname)
+            );
+            }
+    };
+    HelloRequest test                   {
+                                            .name={"Mike", "Ike"},
+                                            .sirname={
+                                                    {.name="bloaty", .moniker{{"bloat-master"}, {"code-killer"}}}, 
+                                                    {.name="mcbloatface"}
+                                            }
+                                        };
+
+    DataBlock tgt;
+    tgt << test;
+    char wireshark_snoop[] =    "\x0a\x04\x4d\x69\x6b\x65\x0a\x03\x49\x6b\x65\x12\x27\x0a\x06\x62" \
+                                "\x6c\x6f\x61\x74\x79\x12\x0e\x0a\x0c\x62\x6c\x6f\x61\x74\x2d\x6d" \
+                                "\x61\x73\x74\x65\x72\x12\x0d\x0a\x0b\x63\x6f\x64\x65\x2d\x6b\x69" \
+                                "\x6c\x6c\x65\x72\x12\x0d\x0a\x0b\x6d\x63\x62\x6c\x6f\x61\x74\x66" \
+                                "\x61\x63\x65";
+    EXPECT_EQ(std::size(wireshark_snoop)-1, std::size(tgt));
+    const auto as_span = std::span{wireshark_snoop}; 
+    const auto drop_terminator = as_span.first(as_span.size()-1);
+    EXPECT_EQ(std::as_bytes(drop_terminator), tgt);
+}
+

@@ -1,7 +1,7 @@
 : foreach Protobuf/*.cpp |> g++ -g -O2 -I. -Wall -std=c++20 -c %f -o %o |> Protobuf/obj/%B.o
-: foreach Protobuf/*.cc |> g++ -g -O2 -I. -Wall -std=c++20 -c %f -o %o |> Protobuf/tobj/%B.o
+: foreach Protobuf/*.cc |> g++ -g -O0 -I. -Wall -std=c++20 -c %f -o %o |> Protobuf/tobj/%B.o
 : Protobuf/obj/*.o |> g++ %f -o %o -lgtest |> Protobuf.exe
-: Protobuf/tobj/*.o |> g++ %f -o %o -pthread -lgtest  -lgtest_main |> Protobuf_test.exe
+: Protobuf/tobj/*.o |> g++ %f -O0 -g -Wall -Wextra -o %o -pthread -lgtest  -lgtest_main |> Protobuf_test.exe
 #: foreach Reflection/*.cpp |> g++ -g -O2 -I. -Wall -std=c++20 -c %f -o %o |> Reflection/obj/%B.o
 #: Reflection/obj/*.o |> g++ %f -o %o |> Reflection.exe
 #: foreach src/*.cpp |> g++ -g -O0 -I. -Wall -std=c++20 -c %f -o %o |> dobj/%B.o

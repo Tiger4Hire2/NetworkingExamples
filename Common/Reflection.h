@@ -81,7 +81,7 @@ template<typename T> concept ProtoStruct =
 requires(T t) { t.get_members(); } &&
 	members_are_same_proto_class<T>();// && 
 	//members_are_ordered<T>();
-
+template<typename T> concept NotProtoStruct = !ProtoStruct<T>;
 
 template <typename T, typename Fn>
 inline void visit_recursive(T& obj, Fn&& fn)
@@ -242,6 +242,13 @@ inline void proto_enumerate(PS& obj, Fn&& fn)
 	std::apply(call_fn, mbrs);
 };
 
+template<class T> struct is_proto_struct;
+template<ProtoStruct T> struct is_proto_struct<T> : public std::true_type {};
+template<NotProtoStruct T> struct is_proto_struct<T> : public std::false_type {};
+template<class T> constexpr bool is_proto_struct_v = is_proto_struct<T>::value;
 
-#define DECL(TYPE, MBR) Member(#MBR, &TYPE::MBR),
-#define PROTODECL(TYPE, ID, MBR) ProtoMember(#MBR, ID, &TYPE::MBR),
+static_assert(!is_proto_struct_v<bool>);
+static_assert(!is_proto_struct_v<std::string>);
+
+#define DECL(TYPE, MBR) Member(#MBR, &TYPE::MBR)
+#define PROTODECL(TYPE, ID, MBR) ProtoMember{#MBR, ID, &TYPE::MBR}
