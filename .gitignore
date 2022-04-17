@@ -341,3 +341,6 @@ healthchecksdb
 .tup/**
 *.exe
 *.o
+Protobuf/example.proto
+Protobuf/generated/Protobuf/example.pb.h
+Protobuf/generated/Protobuf/example.pb.cc
