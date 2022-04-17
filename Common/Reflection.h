@@ -49,12 +49,16 @@ struct is_same_proto_class <std::tuple<ProtoMember<Class, Members>...>> : public
 
 template<class T> constexpr bool members_are_same_class()
 {
-	return is_same_class<decltype(T::get_members())>{}();
+	using MemberListType = decltype(T::get_members());
+	const auto num_members = std::tuple_size<MemberListType>();
+	return (num_members==0) || is_same_class<MemberListType>{}();
 }
 
 template<class T> constexpr bool members_are_same_proto_class()
 {
-	return is_same_proto_class<decltype(T::get_members())>{}();
+	using MemberListType = decltype(T::get_members());
+	const auto num_members = std::tuple_size<MemberListType>();
+	return (num_members==0) || is_same_proto_class<MemberListType>{}();
 }
 
 template<class T>
