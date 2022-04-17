@@ -54,10 +54,15 @@ TEST(ProtoBuf, VarInt32)
         DataBlock tgt;
         WriteAsVarint(tgt, pair.second);
         EXPECT_EQ(ConstDataBlock{pair.first}, as_const(tgt));
+        auto src = as_const(tgt);
+        int v;
+        const auto src_res = src >> v;
+        EXPECT_EQ(src_res.size(), 0);
+        EXPECT_EQ(v, pair.second);
     }
 }
 
-template<class Pairs, class Fn>
+template<class Orig, class Pairs, class Fn>
 void TestVarIntFn( const Pairs test_pairs, const Fn&& fn)
 {
     for (const auto& pair : test_pairs)
@@ -66,6 +71,11 @@ void TestVarIntFn( const Pairs test_pairs, const Fn&& fn)
         DataBlock tgt;
         fn(tgt, pair.second);
         EXPECT_EQ(ConstDataBlock{pair.first}, as_const(tgt)) << "encoding:" << std::dec << pair.second << "(" << std::hex << pair.second << ")";
+        const auto in_data = as_const(tgt); 
+        Orig test;
+        const auto in_data_res = in_data >> test;
+        EXPECT_EQ(in_data_res.size(), 0);   
+        EXPECT_EQ(test, pair.second)  << "encoding:" << std::dec << pair.second << "(" << std::hex << pair.second << ")" << " vs (" << test << ")";
     }
 }
 
@@ -80,7 +90,7 @@ TEST(ProtoBuf, SignedVarInt32)
     std::vector<std::pair<ConstDataBlock, int>> test_pairs = { {test_0_bytes, 0}, {test_neg1_bytes, -1}, {test_1_bytes, 1},
                                      {test_negmax_bytes, -2147483648}, {test_max_bytes, 2147483647}, {test_150_bytes, 150 }};
 
-    TestVarIntFn(test_pairs, [](auto& tgt, const auto val){ return WriteAsSignedVarint32(tgt, val);});
+    TestVarIntFn<SignedInt<int32_t>>(test_pairs, [](auto& tgt, const auto val){ return WriteAsSignedVarint32(tgt, val);});
 }
 
 TEST(ProtoBuf, SignedVarInt64)
@@ -98,7 +108,7 @@ TEST(ProtoBuf, SignedVarInt64)
                                      , {test_max_bytes, 2147483647}, {test_150_bytes, 150 }
         };
 
-    TestVarIntFn(test_pairs, [](auto& tgt, const auto val){ return WriteAsSignedVarint64(tgt, val);});
+    TestVarIntFn<SignedInt<int64_t>>(test_pairs, [](auto& tgt, const auto val){ return WriteAsSignedVarint64(tgt, val);});
 
     std::byte test_negbig_bytes[] = {std::byte{0xFD}, std::byte{0xFF}, std::byte{0xFF}, std::byte{0xFF}, std::byte{0xFF},
                                      std::byte{0xFF}, std::byte{0xFF}, std::byte{0xFF}, std::byte{0x1F} };
@@ -106,7 +116,7 @@ TEST(ProtoBuf, SignedVarInt64)
     std::vector<std::pair<ConstDataBlock, int64_t>> test64_pairs = { 
         {test_negbig_bytes, -0xFFFFFFFFFFFFFFF} 
     }; 
-    TestVarIntFn(test64_pairs, [](auto& tgt, const auto val){ return WriteAsSignedVarint64(tgt, val);});
+    TestVarIntFn<SignedInt<int64_t>>(test64_pairs, [](auto& tgt, const auto val){ return WriteAsSignedVarint64(tgt, val);});
 }
 
 TEST(ProtoBuf, HelloWorld)
@@ -276,3 +286,152 @@ TEST(ProtoBuf, RepeatedEmbeded)
     EXPECT_EQ(std::as_bytes(drop_terminator), tgt);
 }
 
+
+struct Empty
+{
+    static constexpr auto get_members() {
+        return std::make_tuple(
+        );
+    }
+};
+
+TEST(ProtoBufSchema, Empty)
+{
+    std::string schema = to_schema<Empty>();
+    const auto expected = std::string{"message 5Empty\n{\n}\n"};
+    EXPECT_EQ(expected, schema);
+}
+
+TEST(ProtoBufSchema, Simple)
+{
+    struct HelloRequest {
+        std::string name;
+        bool on_off;
+        int32_t var32;
+        int64_t var64;
+        SignedInt<int32_t> s32;
+        SignedInt<int64_t> s64;
+        enum class PhoneType {
+            MOBILE,
+            HOME,
+            WORK,
+            NUM_ENUMS
+        } phone_type;
+        static std::string to_string(PhoneType v) {
+            switch(v){
+                case PhoneType::MOBILE: return "MOBILE";
+                case PhoneType::HOME: return "HOME";
+                case PhoneType::WORK: return "WORK";
+                default:
+                    return "Unknown";
+            }
+        }
+        static constexpr auto get_members() {
+            return std::make_tuple(
+                    PROTODECL(HelloRequest, 1, name),
+                    PROTODECL(HelloRequest, 2, on_off),
+                    PROTODECL(HelloRequest, 3, var32),
+                    PROTODECL(HelloRequest, 4, var64),
+                    PROTODECL(HelloRequest, 5, s32),
+                    PROTODECL(HelloRequest, 6, s64),
+                    PROTODECL(HelloRequest, 6, phone_type)
+            );
+        }
+    }; 
+    std::string schema = to_schema<HelloRequest>();
+    std::cout << schema + "\n";
+}
+
+enum class PhoneType {
+    MOBILE,
+    HOME,
+    WORK,
+    NUM_ENUMS
+};
+
+static std::string to_string(PhoneType v) {
+    switch(v){
+        case PhoneType::MOBILE: return "MOBILE";
+        case PhoneType::HOME: return "HOME";
+        case PhoneType::WORK: return "WORK";
+        default:
+            return "Unknown";
+    }
+}
+
+TEST(ProtoBufSchema, Enums)
+{
+    std::string schema = to_schema<PhoneType>();
+    const auto expected = "enum 9PhoneType{\n	MOBILE,\n	HOME,\n	WORK\n}";
+    EXPECT_EQ(schema, expected);
+}
+
+TEST(ProtoBufRead, string)
+{
+    std::byte wireshark_snoop[] = {
+        std::byte{0x05},
+        std::byte{0x77},
+        std::byte{0x6f},
+        std::byte{0x72},
+        std::byte{0x6c},
+        std::byte{0x64}
+    };
+    std::string test;
+    ConstDataBlock input{wireshark_snoop};
+    const auto remaining = input >> test;
+    EXPECT_EQ(remaining.size(), 0);
+    EXPECT_EQ(test, "world");
+}
+
+/*
+TEST(ProtoBuf, Read)
+{
+    struct HelloRequest {
+        std::string name;
+        int32_t var32;
+        int64_t var64;
+        SignedInt<int32_t> s32;
+        SignedInt<int64_t> s64;
+        static constexpr auto get_members() {
+            return std::make_tuple(
+                    PROTODECL(HelloRequest, 1, name),
+                    PROTODECL(HelloRequest, 2, var32),
+                    PROTODECL(HelloRequest, 3, var64),
+                    PROTODECL(HelloRequest, 4, s32),
+                    PROTODECL(HelloRequest, 5, s64)
+            );
+        }
+    };
+    std::byte wireshark_snoop[] = {
+        std::byte{0x0a},
+        std::byte{0x05},
+        std::byte{0x77},
+        std::byte{0x6f},
+        std::byte{0x72},
+        std::byte{0x6c},
+        std::byte{0x64},
+        std::byte{0x10},
+        std::byte{0x96},
+        std::byte{0x01},
+        std::byte{0x18},
+        std::byte{0x96},
+        std::byte{0x01},
+        std::byte{0x20},
+        std::byte{0xac},
+        std::byte{0x02},
+        std::byte{0x28},
+        std::byte{0xfd},
+        std::byte{0xff},
+        std::byte{0xff},
+        std::byte{0xff},
+        std::byte{0xff},
+        std::byte{0xff},
+        std::byte{0xff},
+        std::byte{0xff},
+        std::byte{0x1f},
+    };
+    HelloRequest test{};
+    ConstDataBlock input{wireshark_snoop};
+    input >> test;
+}
+*/
