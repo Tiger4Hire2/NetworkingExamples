@@ -14,9 +14,9 @@ public:
     BasicWrapper& operator=(T v) {value=v; return *this;}
     BasicWrapper& operator+=(T v) {value+=v; return *this;}
     BasicWrapper& operator-=(T v) {value-=v; return *this;}
-    BasicWrapper& operator*=(T v) {value*=value; return *this;}
-    BasicWrapper& operator/=(T v) {value/=value; return *this;}
-    BasicWrapper& operator%=(T v) {value%=value; return *this;}
+    BasicWrapper& operator*=(T v) {value*=v; return *this;}
+    BasicWrapper& operator/=(T v) {value/=v; return *this;}
+    BasicWrapper& operator%=(T v) {value%=v; return *this;}
     BasicWrapper& operator++() {++value; return *this;}
     BasicWrapper& operator--() {--value; return *this;}
     BasicWrapper operator++(int) {return BasicWrapper(value++);}
