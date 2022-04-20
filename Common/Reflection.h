@@ -78,12 +78,12 @@ constexpr bool members_are_ordered()
 
 template<typename T> concept ReflectionStruct =
 requires(T t) { t.get_members(); } &&
-	members_are_same_class<T>();// && 
+	members_are_same_class<std::remove_reference_t<T>>();// && 
 	//members_are_ordered<T>();
 
 template<typename T> concept ProtoStruct =
 requires(T t) { t.get_members(); } &&
-	members_are_same_proto_class<T>();// && 
+	members_are_same_proto_class<std::remove_reference_t<T>>();// && 
 	//members_are_ordered<T>();
 template<typename T> concept NotProtoStruct = !ProtoStruct<T>;
 
