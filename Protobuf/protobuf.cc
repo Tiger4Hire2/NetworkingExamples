@@ -1,5 +1,8 @@
 // GTEST module
 #include "protobuf.h"
+#include "Common/ReflectionTools.h"
+#include <fstream>
+#include <filesystem>
 
 namespace testing { 
     namespace internal
@@ -27,6 +30,26 @@ namespace testing {
         }
     }
 }
+
+DataBlock ReadFile(std::string name)
+{
+    if (!std::filesystem::exists(name))
+    {
+        std::cerr << "Cannot find file \"" << name << "\"\n";
+        return {};
+    }
+    if (!std::filesystem::is_regular_file(name))
+    {
+        std::cerr << "File is not a regular file (is it a directory?): \"" << name << "\"\n";
+        return {};
+    }
+    const auto size = std::filesystem::file_size(name);
+    std::ifstream file(name, std::ios::binary);
+    DataBlock retval(size);
+    file.read((char*)retval.data(), retval.size());
+    return retval;
+}
+
 #include <gtest/gtest.h>
 
 TEST(ProtoBuf, BytePush)
@@ -173,25 +196,25 @@ TEST(ProtoBuf, HelloWorld)
 
 TEST(ProtoBuf, Compound)
 {
-    struct SirName {
+    struct Surname {
     std::string name;
     static constexpr auto get_members() {
         return std::make_tuple(
-                PROTODECL(SirName, 1, name)
+                PROTODECL(Surname, 1, name)
         );
         }
     };
     struct HelloRequest {
     std::string name;
-    SirName     sirname;
+    Surname     Surname;
     static constexpr auto get_members() {
         return std::make_tuple(
                 PROTODECL(HelloRequest, 1, name),
-                PROTODECL(HelloRequest, 2, sirname)
+                PROTODECL(HelloRequest, 2, Surname)
         );
         }
     };
-    HelloRequest test{.name="Mike", .sirname={"Crotch"}};
+    HelloRequest test{.name="Mike", .Surname={"Crotch"}};
     DataBlock tgt;
     tgt << test;
     char wireshark_snoop[] = "\x0a\x04\x4d\x69\x6b\x65\x12\x08\x0a\x06\x43\x72\x6f\x74\x63\x68";
@@ -203,27 +226,27 @@ TEST(ProtoBuf, Compound)
 
 TEST(ProtoBuf, Repeated)
 {
-    struct SirName {
+    struct Surname {
         std::string name;
         static constexpr auto get_members() {
             return std::make_tuple(
-                    PROTODECL(SirName, 1, name)
+                    PROTODECL(Surname, 1, name)
             );
             }
     };
     struct HelloRequest {
         std::string name;
-        std::vector<SirName>     sirname;
+        std::vector<Surname>     Surname;
         static constexpr auto get_members() {
             return std::make_tuple(
                     PROTODECL(HelloRequest, 1, name),
-                    PROTODECL(HelloRequest, 2, sirname)
+                    PROTODECL(HelloRequest, 2, Surname)
             );
             }
     };
-    static_assert(is_proto_struct_v<SirName>);
+    static_assert(is_proto_struct_v<Surname>);
 
-    HelloRequest test{.name="Mike", .sirname={{{"bloaty"}, {"mcbloatface"}}}};
+    HelloRequest test{.name="Mike", .Surname={{{"bloaty"}, {"mcbloatface"}}}};
     DataBlock tgt;
     tgt << test;
     char wireshark_snoop[] =    "\x0a\x04\x4d\x69\x6b\x65\x12\x08\x0a\x06\x62\x6c\x6f\x61\x74\x79" \
@@ -245,29 +268,29 @@ TEST(ProtoBuf, RepeatedEmbeded)
             );
         }
     };
-    struct SirName {
+    struct Surname {
         std::string name;
         std::vector<Nickname> moniker;
         static constexpr auto get_members() {
             return std::make_tuple(
-                    PROTODECL(SirName, 1, name),
-                    PROTODECL(SirName, 2, moniker)
+                    PROTODECL(Surname, 1, name),
+                    PROTODECL(Surname, 2, moniker)
             );
         }
     };
     struct HelloRequest {
         std::vector<std::string> name;
-        std::vector<SirName>     sirname;
+        std::vector<Surname>     Surname;
         static constexpr auto get_members() {
             return std::make_tuple(
                     PROTODECL(HelloRequest, 1, name),
-                    PROTODECL(HelloRequest, 2, sirname)
+                    PROTODECL(HelloRequest, 2, Surname)
             );
             }
     };
     HelloRequest test                   {
                                             .name={"Mike", "Ike"},
-                                            .sirname={
+                                            .Surname={
                                                     {.name="bloaty", .moniker{{"bloat-master"}, {"code-killer"}}}, 
                                                     {.name="mcbloatface"}
                                             }
@@ -284,6 +307,12 @@ TEST(ProtoBuf, RepeatedEmbeded)
     const auto as_span = std::span{wireshark_snoop}; 
     const auto drop_terminator = as_span.first(as_span.size()-1);
     EXPECT_EQ(std::as_bytes(drop_terminator), tgt);
+
+    const auto src = as_const(tgt);
+    HelloRequest read_tgt; 
+    const auto read_res = src >> read_tgt; 
+    EXPECT_EQ(read_res.size(), 0);
+    EXPECT_EQ(test, read_tgt);
 }
 
 
@@ -383,9 +412,10 @@ TEST(ProtoBufRead, string)
     EXPECT_EQ(test, "world");
 }
 
-/*
+
 TEST(ProtoBuf, Read)
 {
+    using namespace std::string_literals;
     struct HelloRequest {
         std::string name;
         int32_t var32;
@@ -433,5 +463,90 @@ TEST(ProtoBuf, Read)
     HelloRequest test{};
     ConstDataBlock input{wireshark_snoop};
     input >> test;
+    HelloRequest expected{.name="world", .var32=150, .var64=150, .s32=150, .s64=-0xFFFFFFFFFFFFFFF};
+    EXPECT_EQ(test, expected);
 }
-*/
+
+
+// This is a real world example from the protobuf examples 
+TEST(ProtoBuf, AddressBook)
+{
+    // Types required
+    using std::string;
+    struct Timestamp {
+        int64_t seconds;
+        int32_t nanos;
+         static constexpr auto get_members() {
+            return std::make_tuple(
+                    PROTODECL(Timestamp, 1, seconds),
+                    PROTODECL(Timestamp, 2, nanos)
+            );
+        }
+    };
+
+    struct Person {
+        string name;
+        int32_t id;
+        string email;
+
+        enum class PhoneType {
+            MOBILE,
+            HOME,
+            WORK,
+            NUM_ENUMS
+        } phone_type;
+
+        static std::string to_string(PhoneType v) {
+            switch(v){
+                case PhoneType::MOBILE: return "MOBILE";
+                case PhoneType::HOME: return "HOME";
+                case PhoneType::WORK: return "WORK";
+                default:
+                    return "Unknown";
+            }
+        }        
+
+        struct PhoneNumber {
+            string number;
+            PhoneType type;
+            static constexpr auto get_members() {
+                return std::make_tuple(
+                        PROTODECL(PhoneNumber, 1, number),
+                        PROTODECL(PhoneNumber, 2, type)
+                );
+            }
+        };
+
+        std::vector<PhoneNumber> phones;
+
+        Timestamp last_updated;
+        static constexpr auto get_members() {
+            return std::make_tuple(
+                    PROTODECL(Person, 1, name),
+                    PROTODECL(Person, 2, id),
+                    PROTODECL(Person, 3, email),
+                    PROTODECL(Person, 4, phones),
+                    PROTODECL(Person, 5, last_updated)
+            );
+        }
+    };
+
+    // Our address book file is just one of these.
+    struct AddressBook {
+        std::vector<Person> people;
+        static constexpr auto get_members() {
+            return std::make_tuple(
+                    PROTODECL(AddressBook, 1, people)
+            );
+        }
+    };
+    const auto data = ReadFile("address.book.data");
+    AddressBook book{};
+    data >> book;
+    ASSERT_EQ(book.people.size(), 1);
+    EXPECT_EQ(book.people[0].email, "honk@frumpy.com");
+    EXPECT_EQ(book.people[0].name, "Honk");
+    ASSERT_EQ(book.people[0].phones.size(), 1);
+    EXPECT_EQ(book.people[0].phones[0].number, "0123456789");
+    EXPECT_EQ(book.people[0].phones[0].type, Person::PhoneType::MOBILE);
+}

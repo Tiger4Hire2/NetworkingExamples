@@ -12,6 +12,7 @@
 #include "Common/traits.h"
 #include "Common/BasicWrapper.h"
 #include "Common/Enum.h"
+#include "Common/Overloaded.h"
 
 // rules for declaring structures/members 
 class NonVarIntTag{};
@@ -28,10 +29,13 @@ class BasicTypeWrapper : public BasicWrapper<T> {
 };
 
 template<typename T> concept NonStringContainer =
-requires(T t) { t.begin(); } &&
-requires(T t) { t.end(); } &&
-!std::is_same_v<std::string, T>;
+    requires { typename T::value_type;} &&  // element must be default constructable
+    requires(T t) { t.begin(); } &&
+    requires(T t) { t.end(); } &&
+    requires(T t) { t.push_back(typename T::value_type{}); } &&
+    !std::is_same_v<std::string, T>;
 	//members_are_ordered<T>();
+
 
 template <class T> using FixedInt = BasicTypeWrapper<T,FixedTag>;
 template <class T> using SignedInt = BasicTypeWrapper<T,SignedTag>;
@@ -39,6 +43,12 @@ template <class T> using SignedInt = BasicTypeWrapper<T,SignedTag>;
 template<class T> class is_signed: public std::false_type {};
 template<class T> class is_signed<SignedInt<T>>: public std::true_type {};
 template<class T> constexpr bool is_signed_v{is_signed<T>::value};
+
+template<class T> constexpr bool is_non_string_container_v{false};
+template<NonStringContainer T> constexpr bool is_non_string_container_v<T>{true};
+static_assert(!is_non_string_container_v<std::string>);
+static_assert(is_non_string_container_v<std::vector<int>>);
+static_assert(is_non_string_container_v<std::vector<int>>);
 
 // rules for encoding for transmition
 
@@ -175,11 +185,6 @@ inline void WriteDelimitedBytes(DataBlock& tgt, T&& obj)
 template<class T> class is_string: public std::false_type{};
 template<class CHAR, class ALLOC> class is_string<std::basic_string<CHAR, ALLOC>>: public std::true_type{};
 
-template<class T> struct is_non_string_conainer;
-template<NonStringContainer T> struct is_non_string_conainer<T> : public std::true_type {};
-template<class T> struct is_non_string_conainer : public std::false_type {};
-template<class T> constexpr bool is_non_string_container_v = is_non_string_conainer<T>::value;
-
 template<class T>
 inline DataBlock& operator<<(DataBlock& tgt, const T& obj)
 {
@@ -207,6 +212,8 @@ inline DataBlock& operator<<(DataBlock& tgt, const T& obj)
     }
     return tgt;
 }
+
+
 
 template<ProtoStruct PS>
 inline DataBlock& operator<<(DataBlock& tgt, const PS& obj)
@@ -251,6 +258,7 @@ inline DataBlock& operator<<(DataBlock& tgt, const PS& obj)
     return tgt;
 }
 
+
 // rules for reading from a structure from a ContDataBlock
 
 // rules for writing the schema
@@ -260,6 +268,8 @@ inline std::string type_as_string(T p)
 {
     using namespace std::string_literals;
     using RawType = std::remove_const_t<std::remove_reference_t<decltype(std::declval<PS>().*p)>>;
+    if (is_non_string_container_v<RawType>)
+        return "repeated thing"s;
     if (std::is_same_v<RawType, std::string>)
         return "string"s;
     if (std::is_same_v<RawType, bool>)
@@ -336,6 +346,12 @@ ConstDataBlock operator>>(ConstDataBlock data, T& tgt)
     return data;
 }
 
+template<EnumType T>
+ConstDataBlock operator>>(ConstDataBlock data, T& tgt)
+{
+    return data >> reinterpret_cast<std::underlying_type_t<T>&>(tgt);    // write as if it was the underlying type
+}
+
 template<class T>
 ConstDataBlock operator>>(ConstDataBlock data, SignedInt<T>& tgt)
 {
@@ -369,16 +385,72 @@ ConstDataBlock operator>>(ConstDataBlock data, std::string& tgt)
     return data;
 }
 
+template<NonStringContainer C>
+ConstDataBlock operator>>(ConstDataBlock data, C& tgt)
+{
+    using T = typename std::remove_reference_t<C>::value_type; 
+    T new_elem{};
+    if constexpr (is_proto_struct_v<T>) // embeded object are treated like strings
+    {
+        int size;
+        data = data >> size;
+        const auto obj_data = data.first(size);
+        const auto unused_data = obj_data >> new_elem;
+        assert(unused_data.size()==0);
+        tgt.push_back(new_elem);
+        return data.subspan(size);
+    }
+    else
+    {
+        const auto unused_data = data >> new_elem;
+        tgt.push_back(new_elem);
+        return unused_data;
+    }
+}
+
 template<ProtoStruct PS>
 ConstDataBlock operator>>(ConstDataBlock data, PS& tgt)
 {
-    using ReadFn = std::function<ConstDataBlock(ConstDataBlock)>;
+    using ReadFn = std::function<ConstDataBlock(ConstDataBlock, WireType)>;
     std::map<int, ReadFn> member_map;
-    proto_enumerate(tgt, [&member_map](auto tgt, int id, auto )
+    proto_enumerate(tgt, overloaded{
+    [&member_map](auto& tgt, int id, auto )
     {
-        member_map[id] = [&tgt](ConstDataBlock data){
-            return data >> tgt;
+        member_map[id] = [&tgt](ConstDataBlock data, WireType type){ return data >> tgt;};
+    },
+    [&member_map]<NonStringContainer T>(T& tgt, int id, auto )
+    {
+        member_map[id] = [&tgt](ConstDataBlock data, WireType type){ 
+            assert/*if*/ (type == WireType::DELIMITED);
+            return data >> tgt;;
         };
+    },
+    [&member_map]<ProtoStruct T>(T& tgt, int id, auto )
+    {
+        member_map[id] = [&tgt](ConstDataBlock data, WireType type){ 
+            assert/*if*/ (type == WireType::DELIMITED);
+            int size;
+            data = data >> size;
+            const auto obj_data = data.first(size);
+            const auto unused_data = obj_data >> tgt;
+            assert(unused_data.size()==0);
+            return data.subspan(size);
+        };
+    }
     });
+    while (!data.empty())
+    {
+        // is this a byte? or a varint?
+        std::byte id_and_type{std::byte{0xFF}};
+        data = data >> id_and_type;
+        const auto id = static_cast<int>(id_and_type >> 3);
+        const WireType type = static_cast<WireType>(id_and_type&std::byte{7});
+        const auto found = member_map.find(id);
+        if (member_map.end()!=found)
+            data = found->second(data, type);
+        else
+            std::cerr << "cannot find index:" << id << "\n";
+            
+    }
     return data;
 }
