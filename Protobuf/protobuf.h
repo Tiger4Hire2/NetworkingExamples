@@ -125,7 +125,7 @@ inline std::byte EncodeField(FieldID id)
 template<class T>
 inline void WriteAsVarint(DataBlock& tgt, T&& obj)
 {
-    std::uint64_t val = obj;
+    std::uint64_t val = static_cast<std::uint64_t>(obj);
     do
     {
         std::byte next = static_cast<std::byte>(val)&std::byte{0x7F};
@@ -222,37 +222,46 @@ inline DataBlock& operator<<(DataBlock& tgt, const PS& obj)
 		{
             using this_type = std::remove_const_t<std::remove_reference_t<decltype(mbr)>>;
             const auto tag = EncodeField<this_type>(id);
-            if constexpr (is_non_string_container_v<this_type>)
+            if constexpr (is_non_string_container_v<this_type>) // this needs updating to support packed types
             {
                 for (const auto& elem:mbr)
                 {
                     using elem_type = std::remove_const_t<std::remove_reference_t<decltype(elem)>>;
-                    tgt << tag;
-                    if constexpr (!is_proto_struct_v<elem_type>)
-                        tgt << elem;
-                    else
+                    if (elem != elem_type{})
                     {
-                        // message
-                        DataBlock tmp;
-                        tmp << elem;
-                        WriteAsVarint(tgt, (int)std::size(tmp));
-                        tgt.insert(tgt.end(), tmp.begin(), tmp.end());
+                        tgt << tag;
+                        if constexpr (!is_proto_struct_v<elem_type>)
+                            tgt << elem;
+                        else
+                        {
+                            // message
+                            DataBlock tmp;
+                            tmp << elem;
+                            WriteAsVarint(tgt, (int)std::size(tmp));
+                            tgt.insert(tgt.end(), tmp.begin(), tmp.end());
+                        }
                     }
                 }
             }
             else if constexpr (!is_proto_struct_v<this_type>)
             {
-                tgt << tag;
-                tgt << mbr;
+                if (mbr != decltype(mbr){})
+                {
+                    tgt << tag;
+                    tgt << mbr;
+                }
             }
             else
             {
                 // message
                 DataBlock tmp;
                 tmp << mbr;
-                tgt << tag;
-                WriteAsVarint(tgt, (int)std::size(tmp));
-                tgt.insert(tgt.end(), tmp.begin(), tmp.end());
+                if (!tmp.empty())
+                {
+                    tgt << tag;
+                    WriteAsVarint(tgt, (int)std::size(tmp));
+                    tgt.insert(tgt.end(), tmp.begin(), tmp.end());
+                }
             }
 		});
     return tgt;

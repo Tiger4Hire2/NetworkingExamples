@@ -206,15 +206,15 @@ TEST(ProtoBuf, Compound)
     };
     struct HelloRequest {
     std::string name;
-    Surname     Surname;
+    Surname     surname;
     static constexpr auto get_members() {
         return std::make_tuple(
                 PROTODECL(HelloRequest, 1, name),
-                PROTODECL(HelloRequest, 2, Surname)
+                PROTODECL(HelloRequest, 2, surname)
         );
         }
     };
-    HelloRequest test{.name="Mike", .Surname={"Crotch"}};
+    HelloRequest test{.name="Mike", .surname={"Crotch"}};
     DataBlock tgt;
     tgt << test;
     char wireshark_snoop[] = "\x0a\x04\x4d\x69\x6b\x65\x12\x08\x0a\x06\x43\x72\x6f\x74\x63\x68";
@@ -236,17 +236,17 @@ TEST(ProtoBuf, Repeated)
     };
     struct HelloRequest {
         std::string name;
-        std::vector<Surname>     Surname;
+        std::vector<Surname>     surname;
         static constexpr auto get_members() {
             return std::make_tuple(
                     PROTODECL(HelloRequest, 1, name),
-                    PROTODECL(HelloRequest, 2, Surname)
+                    PROTODECL(HelloRequest, 2, surname)
             );
             }
     };
     static_assert(is_proto_struct_v<Surname>);
 
-    HelloRequest test{.name="Mike", .Surname={{{"bloaty"}, {"mcbloatface"}}}};
+    HelloRequest test{.name="Mike", .surname={{{"bloaty"}, {"mcbloatface"}}}};
     DataBlock tgt;
     tgt << test;
     char wireshark_snoop[] =    "\x0a\x04\x4d\x69\x6b\x65\x12\x08\x0a\x06\x62\x6c\x6f\x61\x74\x79" \
@@ -280,17 +280,17 @@ TEST(ProtoBuf, RepeatedEmbeded)
     };
     struct HelloRequest {
         std::vector<std::string> name;
-        std::vector<Surname>     Surname;
+        std::vector<Surname>     surname;
         static constexpr auto get_members() {
             return std::make_tuple(
                     PROTODECL(HelloRequest, 1, name),
-                    PROTODECL(HelloRequest, 2, Surname)
+                    PROTODECL(HelloRequest, 2, surname)
             );
             }
     };
     HelloRequest test                   {
                                             .name={"Mike", "Ike"},
-                                            .Surname={
+                                            .surname={
                                                     {.name="bloaty", .moniker{{"bloat-master"}, {"code-killer"}}}, 
                                                     {.name="mcbloatface"}
                                             }
@@ -370,6 +370,59 @@ TEST(ProtoBufSchema, Simple)
     std::string schema = to_schema<HelloRequest>();
     std::cout << schema + "\n";
 }
+
+
+TEST(ProtoBufSchema, SkipEmptyFields)
+{
+    struct SubObject{
+        int a{0};
+        static constexpr auto get_members() {
+            return std::make_tuple(
+                    PROTODECL(SubObject, 1, a)
+            );
+        }
+    };
+    struct HelloRequest {
+        std::string name;
+        bool on_off;
+        int32_t var32;
+        int64_t var64;
+        SignedInt<int32_t> s32;
+        SignedInt<int64_t> s64;
+        enum class PhoneType {
+            MOBILE,
+            HOME,
+            WORK,
+            NUM_ENUMS
+        } phone_type;
+        SubObject sub;
+        static constexpr auto get_members() {
+            return std::make_tuple(
+                    PROTODECL(HelloRequest, 1, name),
+                    PROTODECL(HelloRequest, 2, on_off),
+                    PROTODECL(HelloRequest, 3, var32),
+                    PROTODECL(HelloRequest, 4, var64),
+                    PROTODECL(HelloRequest, 5, s32),
+                    PROTODECL(HelloRequest, 6, s64),
+                    PROTODECL(HelloRequest, 7, phone_type),
+                    PROTODECL(HelloRequest, 8, sub)
+            );
+        }
+    };
+    {
+        HelloRequest test{};
+        DataBlock tgt;
+        tgt << test;
+        EXPECT_EQ(tgt.size(),0);
+    }
+    {
+        HelloRequest test{.s32=1};
+        DataBlock tgt;
+        tgt << test;
+        EXPECT_EQ(tgt.size(),2);
+    }
+}
+
 
 enum class PhoneType {
     MOBILE,

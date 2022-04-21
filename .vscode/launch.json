@@ -11,8 +11,9 @@
             "program": "${workspaceFolder}/Protobuf_test.exe",
             "args": [],
             "stopAtEntry": false,
-            "cwd": "${fileDirname}",
+            "cwd": "${workspaceFolder}",
             "environment": [],
+            "preLaunchTask": "tup",
             "externalConsole": false,
             "MIMode": "gdb",
             "setupCommands": [

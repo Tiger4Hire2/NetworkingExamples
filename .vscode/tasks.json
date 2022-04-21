@@ -6,9 +6,13 @@
         {
             "label": "tup",
             "type": "shell",
-            "command": "pwd && whoami && tup",
-            "options": {"cwd": "${workspaceFolder}"},
-            "problemMatcher": ["$gcc"],
+            "command": "./do_tup",
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
             "group": {
                 "kind": "build",
                 "isDefault": true
